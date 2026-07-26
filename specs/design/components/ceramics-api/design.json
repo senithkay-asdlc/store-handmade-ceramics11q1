@@ -1,0 +1,51 @@
+{
+  "name": "ceramics-api",
+  "type": "service",
+  "version": "0.1.0",
+  "language": "Go",
+  "buildpack": "docker",
+  "appPath": "ceramics-api",
+  "entrypoint": "deployment/service",
+  "exposure": "internet",
+  "dependencies": [
+    {
+      "kind": "platform-resource",
+      "name": "user-auth",
+      "resourceType": "thunder-app",
+      "description": "Thunder sign-in for registered customers; the platform derives end-user-required auth on this service's protected endpoints (cart sync, saved addresses, order history) from this dependency.",
+      "parameters": { "scopes": "openid profile email" }
+    },
+    {
+      "kind": "external",
+      "name": "stripe",
+      "style": "sdk",
+      "package": "go:github.com/stripe/stripe-go/v78",
+      "description": "Creates and confirms PaymentIntents for checkout; reads the resulting payment status to gate order creation.",
+      "config": [
+        { "key": "STRIPE_API_KEY", "secret": true, "description": "Stripe secret API key used to create/confirm PaymentIntents." },
+        { "key": "STRIPE_WEBHOOK_SECRET", "secret": true, "description": "Signing secret to verify Stripe webhook callbacks, if used to confirm async payment status." }
+      ]
+    },
+    {
+      "kind": "external",
+      "name": "email-provider",
+      "description": "Sends the order-confirmation email (with order reference) after a successful order is created.",
+      "candidates": [
+        {
+          "name": "resend",
+          "style": "sdk",
+          "package": "go:github.com/resend/resend-go/v2",
+          "description": "Resend transactional email API."
+        },
+        {
+          "name": "sendgrid",
+          "style": "sdk",
+          "package": "go:github.com/sendgrid/sendgrid-go",
+          "description": "SendGrid transactional email API."
+        }
+      ]
+    }
+  ],
+  "description": "The single backend for the ceramics storefront: read-only product/variant/category catalog with live stock levels, server-side cart sync for signed-in customers, checkout orchestration (Stripe PaymentIntent creation/confirmation, atomic stock re-validation and decrement, immutable order snapshot creation), order-confirmation email dispatch, and order history/guest lookup. Owns an embedded SQLite database for all of the above. Does NOT provide an admin/back-office UI or API for managing catalog/inventory content — that data is seeded/maintained directly against the database outside this service. Does NOT implement its own login/token endpoints; the platform gateway validates Thunder-issued JWTs and injects X-User-Id / X-User-Groups on protected requests.",
+  "skillsApplied": ["openapi-conventions", "go", "api-management"]
+}

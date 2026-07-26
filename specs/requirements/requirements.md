@@ -157,3 +157,4 @@ transactional email capability.
 cart, and complete checkout with a card payment, receiving an order
 confirmation — either as a guest or as a registered customer — without
 the store overselling out-of-stock variants.
+

@@ -1,0 +1,551 @@
+openapi: 3.0.3
+info:
+  title: Ceramics API
+  version: 0.1.0
+  description: Catalog, cart, checkout, and order API for the handmade ceramics storefront.
+servers:
+  - url: /
+
+security:
+  - bearerAuth: []
+  - {}
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: service is healthy
+
+  /categories:
+    get:
+      operationId: listCategories
+      summary: List product categories
+      security: []
+      responses:
+        '200':
+          description: categories
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Category' }
+
+  /products:
+    get:
+      operationId: listProducts
+      summary: List/search/filter products
+      security: []
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+          description: keyword search on name/description
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: matching products
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Product' }
+
+  /products/{productId}:
+    get:
+      operationId: getProduct
+      summary: Get a product with its variants
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: product detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404':
+          description: product not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart:
+    get:
+      operationId: getCart
+      summary: Get the signed-in customer's server-side cart
+      responses:
+        '200':
+          description: current cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    put:
+      operationId: replaceCart
+      summary: Replace the signed-in customer's cart contents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartInput' }
+      responses:
+        '200':
+          description: updated cart
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+        '400':
+          description: invalid cart payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /cart/validate:
+    post:
+      operationId: validateCart
+      summary: Re-validate stock availability for a cart's line items (guest or signed-in)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartInput' }
+      responses:
+        '200':
+          description: per-line-item availability result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartValidation' }
+        '400':
+          description: invalid cart payload
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /checkout/payment-intent:
+    post:
+      operationId: createPaymentIntent
+      summary: Create a Stripe PaymentIntent for a re-validated cart plus shipping selection
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentIntentRequest' }
+      responses:
+        '200':
+          description: client secret for the created PaymentIntent
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentIntentResponse' }
+        '400':
+          description: invalid request or unavailable item
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List the signed-in customer's order history
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: order history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  next: { type: string, nullable: true }
+                  previous: { type: string, nullable: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Order' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      operationId: createOrder
+      summary: Create an order after payment confirmation (guest or signed in)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderCreateRequest' }
+      responses:
+        '201':
+          description: order created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '400':
+          description: payment not confirmed or invalid request
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: one or more items are no longer available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      summary: Get one order the signed-in caller owns
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: order not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders/lookup:
+    get:
+      operationId: lookupGuestOrder
+      summary: Look up an order by reference and checkout email (guest order tracking)
+      security: []
+      parameters:
+        - name: reference
+          in: query
+          required: true
+          schema: { type: string }
+        - name: email
+          in: query
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: order detail
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404':
+          description: no matching order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /addresses:
+    get:
+      operationId: listAddresses
+      summary: List the signed-in customer's saved addresses
+      responses:
+        '200':
+          description: saved addresses
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, data]
+                properties:
+                  count: { type: integer }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Address' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    post:
+      operationId: createAddress
+      summary: Save a new shipping address for the signed-in customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddressInput' }
+      responses:
+        '201':
+          description: address saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Address' }
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /addresses/{addressId}:
+    delete:
+      operationId: deleteAddress
+      summary: Remove a saved address
+      parameters:
+        - name: addressId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: address removed
+        '401':
+          description: missing or invalid caller identity
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: address not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: integer, description: HTTP or application error code }
+        message: { type: string, description: short human-readable label }
+        description: { type: string, description: detailed explanation }
+        moreInfo: { type: string, description: URI to documentation }
+
+    Category:
+      type: object
+      required: [id, name, slug]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        slug: { type: string }
+
+    Variant:
+      type: object
+      required: [id, attributes, price, stock]
+      properties:
+        id: { type: string }
+        sku: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+          description: e.g. {"size":"Medium","color":"Sage Green"}
+        price: { type: number, format: float }
+        stock: { type: integer }
+
+    Product:
+      type: object
+      required: [id, name, category, basePrice, inStock]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string }
+        images:
+          type: array
+          items: { type: string }
+        basePrice: { type: number, format: float }
+        inStock: { type: boolean }
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          required: [description, variants]
+          properties:
+            description: { type: string }
+            variants:
+              type: array
+              items: { $ref: '#/components/schemas/Variant' }
+
+    CartItemInput:
+      type: object
+      required: [variantId, quantity]
+      properties:
+        variantId: { type: string }
+        quantity: { type: integer, minimum: 1 }
+
+    CartInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItemInput' }
+
+    CartItem:
+      allOf:
+        - $ref: '#/components/schemas/CartItemInput'
+        - type: object
+          required: [productName, unitPrice, available]
+          properties:
+            productName: { type: string }
+            variantAttributes:
+              type: object
+              additionalProperties: { type: string }
+            unitPrice: { type: number, format: float }
+            available: { type: boolean }
+
+    Cart:
+      type: object
+      required: [items, subtotal]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+        subtotal: { type: number, format: float }
+
+    CartValidation:
+      type: object
+      required: [valid, items]
+      properties:
+        valid: { type: boolean, description: true when every line item is available at its requested quantity }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CartItem' }
+
+    Address:
+      type: object
+      required: [id, name, street, city, postalCode, country]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        name: { type: string }
+        street: { type: string }
+        city: { type: string }
+        region: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+
+    AddressInput:
+      type: object
+      required: [name, street, city, postalCode, country]
+      properties:
+        label: { type: string }
+        name: { type: string }
+        street: { type: string }
+        city: { type: string }
+        region: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
+
+    PaymentIntentRequest:
+      type: object
+      required: [cart, shippingAddress]
+      properties:
+        cart: { $ref: '#/components/schemas/CartInput' }
+        shippingAddress: { $ref: '#/components/schemas/AddressInput' }
+        email: { type: string, format: email, description: required for guest checkout }
+
+    PaymentIntentResponse:
+      type: object
+      required: [clientSecret, subtotal, shippingFee, total]
+      properties:
+        clientSecret: { type: string }
+        subtotal: { type: number, format: float }
+        shippingFee: { type: number, format: float }
+        total: { type: number, format: float }
+
+    OrderCreateRequest:
+      type: object
+      required: [cart, shippingAddress, paymentIntentId]
+      properties:
+        cart: { $ref: '#/components/schemas/CartInput' }
+        shippingAddress: { $ref: '#/components/schemas/AddressInput' }
+        email: { type: string, format: email, description: required for guest checkout }
+        paymentIntentId: { type: string }
+
+    OrderLineItem:
+      type: object
+      required: [variantId, productName, unitPrice, quantity]
+      properties:
+        variantId: { type: string }
+        productName: { type: string }
+        variantAttributes:
+          type: object
+          additionalProperties: { type: string }
+        unitPrice: { type: number, format: float }
+        quantity: { type: integer }
+
+    Order:
+      type: object
+      required: [id, reference, status, items, subtotal, shippingFee, total, currency, createdAt]
+      properties:
+        id: { type: string }
+        reference: { type: string }
+        status: { type: string, enum: [placed, paid, shipped, completed, cancelled] }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OrderLineItem' }
+        shippingAddress: { $ref: '#/components/schemas/Address' }
+        subtotal: { type: number, format: float }
+        shippingFee: { type: number, format: float }
+        total: { type: number, format: float }
+        currency: { type: string }
+        createdAt: { type: string, format: date-time }
