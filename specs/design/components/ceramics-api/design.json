@@ -29,20 +29,12 @@
     {
       "kind": "external",
       "name": "email-provider",
-      "description": "Sends the order-confirmation email (with order reference) after a successful order is created.",
-      "candidates": [
-        {
-          "name": "resend",
-          "style": "sdk",
-          "package": "go:github.com/resend/resend-go/v2",
-          "description": "Resend transactional email API."
-        },
-        {
-          "name": "sendgrid",
-          "style": "sdk",
-          "package": "go:github.com/sendgrid/sendgrid-go",
-          "description": "SendGrid transactional email API."
-        }
+      "style": "sdk",
+      "package": "go:github.com/resend/resend-go/v2",
+      "description": "Sends the order-confirmation email (with order reference) after a successful order is created, via Resend.",
+      "config": [
+        { "key": "RESEND_API_KEY", "secret": true, "description": "Resend API key used to send transactional emails." },
+        { "key": "RESEND_FROM_EMAIL", "description": "The From address order-confirmation emails are sent from." }
       ]
     }
   ],
